@@ -5,8 +5,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- API Keys ---
+# --- API Keys & LLM ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "")
+
+# Auto-detect OpenRouter vs Gemini vs OpenAI and sync os.environ for LangChain/Ragas
+if OPENAI_API_KEY.startswith("sk-or-"):
+    OPENAI_BASE_URL = "https://openrouter.ai/api/v1"
+    os.environ["OPENAI_BASE_URL"] = OPENAI_BASE_URL
+elif OPENAI_API_KEY.startswith("AIza") and not OPENAI_BASE_URL:
+    OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+    os.environ["OPENAI_BASE_URL"] = OPENAI_BASE_URL
+
+LLM_MODEL = os.getenv(
+    "LLM_MODEL",
+    "nvidia/nemotron-3-ultra-550b-a55b:free" if "openrouter" in OPENAI_BASE_URL
+    else "gemini-2.5-flash-lite" if "generativelanguage" in OPENAI_BASE_URL
+    else "gpt-4o-mini"
+)
 
 # --- Qdrant ---
 QDRANT_HOST = "localhost"

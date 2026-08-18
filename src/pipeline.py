@@ -57,26 +57,33 @@ def build_pipeline():
     return search, reranker
 
 
+_llm_query_disabled = False
+
+
 def run_query(query: str, search: HybridSearch, reranker: CrossEncoderReranker) -> tuple[str, list[str]]:
     """Run single query through pipeline."""
+    global _llm_query_disabled
     results = search.search(query)
     docs = [{"text": r.text, "score": r.score, "metadata": r.metadata} for r in results]
     reranked = reranker.rerank(query, docs, top_k=RERANK_TOP_K)
     contexts = [r.text for r in reranked] if reranked else [r.text for r in results[:3]]
 
-    from config import OPENAI_API_KEY
-    if OPENAI_API_KEY and contexts:
+    from config import OPENAI_API_KEY, OPENAI_BASE_URL, LLM_MODEL
+    if OPENAI_API_KEY and contexts and not _llm_query_disabled:
         try:
             from openai import OpenAI
-            client = OpenAI()
+            client = OpenAI(base_url=OPENAI_BASE_URL or None)
             context_str = "\n\n".join(contexts)
-            resp = client.chat.completions.create(model="gpt-4o-mini", messages=[
+            resp = client.chat.completions.create(model=LLM_MODEL, messages=[
                 {"role": "system", "content": "Trả lời CHỈ dựa trên context. Nếu không có → nói 'Không tìm thấy.'"},
                 {"role": "user", "content": f"Context:\n{context_str}\n\nCâu hỏi: {query}"},
             ])
             answer = resp.choices[0].message.content
         except Exception as e:
             print(f"  ⚠️  LLM generation failed: {e}", flush=True)
+            if "429" in str(e) or "limit" in str(e).lower() or "quota" in str(e).lower():
+                _llm_query_disabled = True
+                print("  💡 Đã chạm giới hạn quota API generation. Chuyển sang trích xuất câu trả lời trực tiếp từ top context.", flush=True)
             answer = contexts[0]
     else:
         answer = contexts[0] if contexts else "Không tìm thấy thông tin."

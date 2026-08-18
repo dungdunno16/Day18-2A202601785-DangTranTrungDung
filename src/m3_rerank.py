@@ -26,7 +26,15 @@ class CrossEncoderReranker:
     def _load_model(self):
         if self._model is None:
             from sentence_transformers import CrossEncoder
-            self._model = CrossEncoder(self.model_name)
+            try:
+                import torch
+                if torch.cuda.is_available() and torch.cuda.get_device_properties(0).total_memory < 6 * 1024**3:
+                    # For GPUs under 6GB, use CPU for reranker to avoid OOM when dense embedder is in memory
+                    self._model = CrossEncoder(self.model_name, device="cpu")
+                else:
+                    self._model = CrossEncoder(self.model_name)
+            except Exception:
+                self._model = CrossEncoder(self.model_name, device="cpu")
         return self._model
 
     def rerank(self, query: str, documents: list[dict], top_k: int = RERANK_TOP_K) -> list[RerankResult]:
